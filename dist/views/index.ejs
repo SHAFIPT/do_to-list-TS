@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="./tailwind.config.js"></script>
+    <!-- SweetAlert CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/sweetalert/1.1.3/sweetalert.min.css">
+    <!-- SweetAlert JS -->
+
+    <title>Document</title>
+</head>
+<style>
+    .checked {
+        background-image: url('/css/images/checked.png');
+        background-size: cover;
+        background-repeat: no-repeat;
+    }
+
+    .unchecked {
+        background-image: url('/css/images/unchecked.png');
+        background-size: cover;
+        background-repeat: no-repeat;
+    }
+
+    .checked,
+    .unchecked {
+        position: relative;
+        top: 4px;
+        /* Adjust the value to move down */
+    }
+
+    body {
+        background-image: url('/css/images/bg7.jpg');
+        background-size: cover;
+        background-position: center;
+        background-attachment: fixed;
+        /* Makes the background stay in place */
+    }
+</style>
+
+<body>
+    <div class="">
+        <img src="" alt="" class="w-full fixed -z-40">
+        <div class="flex justify-center items-center p-6 md:p-44 mt-20 md:mt-0">
+            <div class="w-full md:w-6/12 min-h-72 bg-white border p-4 rounded-xl">
+                <h1 class="flex font-serif text-xl md:text-2xl mb-4 md:mb-8 pt-3 pl-4">To-Do List <img
+                        src="/css/images/icon.png" alt="" class="w-9 ml-3"></h1>
+
+                <!-- Flex container to align input and button -->
+                <div class="relative flex pl-4 md:pl-6 mr-5">
+                    <input type="text" id="input-box" placeholder="Add Your task"
+                        class="h-12 md:h-14 w-full pl-4 md:pl-6 bg-gray-300 border-0 rounded-full p-2 pr-20 md:pr-24 focus:outline-none focus:ring-0">
+                    <button id="submit"
+                        class="absolute right-0 w-28 h-12 md:w-32 md:h-14 bg-red-500 text-white border-none rounded-full text-xs md:text-sm"
+                        onclick="TaskManager.addTask()">
+                        Add
+                    </button>
+                </div>
+                <ul id="list-container" class="p-4 md:p-7 ml-2 text-sm md:text-lg list-none space-y-3 md:space-y-4">
+                    <!-- This will be populated dynamically -->
+                    <% tasks.forEach(task => { %>
+                        <li class="flex items-center cursor-pointer justify-between">
+                            <span class="flex-grow">
+                                <span class="w-5 h-5 inline-block mr-2 <%= task.status === 'done' ? 'checked' : 'unchecked' %>"></span>
+                                <%= task.title %>
+                            </span>
+                            <span class="relative text-red-300 text-lg ml-4 cursor-pointer rounded-full p-2 transition-all duration-300 ease-in-out hover:bg-red-100 hover:text-red-500"
+                                  onclick="deleteTask(<%= task.id %>)">
+                                &times;
+                            </span>
+                        </li>
+                    <% }) %>
+                </ul>
+            </div>
+        </div>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sweetalert/1.1.3/sweetalert.min.js"></script>
+    <script src="dist/index.js"></script>
+    <script>
+        const inputbox = document.getElementById('input-box');
+        const submitButton = document.getElementById('submit');
+        const listContainer = document.getElementById('list-container');
+
+        // Fetch tasks from server
+        async function fetchTasks() {
+            try {
+                const response = await fetch('/get-tasks');
+                if (response.ok) {
+                    const tasks = await response.json();
+                    return tasks;
+                }
+                return [];
+            } catch (error) {
+                console.error("Error fetching tasks:", error);
+                return [];
+            }
+        }
+
+        submitButton.addEventListener('click', async () => {
+            const tasktitle = inputbox.value.trim();
+
+            if (!tasktitle) {
+                swal('Please enter a task');
+                return;
+            }
+
+            try {
+                const response = await fetch('/add-tasks', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ title: tasktitle })
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    inputbox.value = '';
+                    const newTaskElement = createTaskElement(result.task);
+                    listContainer.appendChild(newTaskElement);
+                    await syncWithServer(); // Sync after adding
+                } else {
+                    swal("Failed to add task!", result.message);
+                }
+            } catch (error) {
+                console.error("Error:", error);
+                swal("An error occurred while adding the task.");
+            }
+        });
+
+        // Updated toggleCheck function
+        function toggleCheck(taskSpan) {
+            const checkBox = taskSpan.querySelector('.unchecked, .checked');
+            const textSpan = taskSpan.querySelector('.task-text');
+            
+            if (checkBox.classList.contains('unchecked')) {
+                checkBox.classList.remove('unchecked');
+                checkBox.classList.add('checked');
+                taskSpan.classList.add('task-completed');
+                if (textSpan) {
+                    textSpan.style.textDecoration = 'line-through';
+                    textSpan.style.color = '#888';
+                }
+            } else {
+                checkBox.classList.remove('checked');
+                checkBox.classList.add('unchecked');
+                taskSpan.classList.remove('task-completed');
+                if (textSpan) {
+                    textSpan.style.textDecoration = 'none';
+                    textSpan.style.color = '';
+                }
+            }
+        }
+
+        // Updated createTaskElement function
+        function createTaskElement(task) {
+            let li = document.createElement('li');
+            li.className = "flex items-center cursor-pointer justify-between";
+            li.setAttribute("data-id", task.id);
+
+            let taskSpan = document.createElement('span');
+            taskSpan.className = `flex-grow ${task.status === 'done' ? 'task-completed' : ''}`;
+            
+            // Updated HTML structure with separate spans for checkbox and text
+            taskSpan.innerHTML = `
+                <span class="w-5 h-5 inline-block mr-2 ${task.status === 'done' ? 'checked' : 'unchecked'}"></span>
+                <span class="task-text" style="${task.status === 'done' ? 'text-decoration: line-through; color: #888;' : ''}">${task.title}</span>
+            `;
+
+            taskSpan.onclick = async function() {
+                toggleCheck(taskSpan);
+                await updateTaskStatus(task.id);
+            };
+            li.appendChild(taskSpan);
+
+            let span = document.createElement('span');
+            span.innerHTML = '\u00d7';
+            span.className = 'relative text-red-300 text-lg ml-4 cursor-pointer rounded-full p-2 transition-all duration-300 ease-in-out hover:bg-red-100 hover:text-red-500';
+
+            span.onclick = async function() {
+                const taskId = li.getAttribute("data-id");
+                const response = await deleteTask(taskId);
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result.tasks) {
+                        renderTasks(result.tasks);
+                    }
+                    // swal("Task deleted successfully!");
+                } else {
+                    swal("Failed to delete task!");
+                }
+            };
+
+            li.appendChild(span);
+            return li;
+        }
+
+        async function deleteTask(id) {
+            try {
+                return await fetch(`/delete-task/${id}`, { method: 'DELETE' });
+            } catch (error) {
+                console.error("Error:", error);
+                swal("An error occurred while deleting the task.");
+                return null;
+            }
+        }
+
+        // Updated updateTaskStatus function
+        async function updateTaskStatus(taskId) {
+            try {
+                const response = await fetch(`/update-task-status/${taskId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    swal("Failed to update task status!");
+                    return;
+                }
+
+                const result = await response.json();
+                if (result.tasks) {
+                    renderTasks(result.tasks); // Update the entire list to ensure sync
+                }
+            } catch (error) {
+                console.error("Error updating task status:", error);
+                swal("Error updating task status!");
+            }
+        }
+
+        async function syncWithServer() {
+            const tasks = await fetchTasks();
+            renderTasks(tasks);
+        }
+
+        function renderTasks(tasks) {
+            listContainer.innerHTML = '';
+            tasks.forEach(task => {
+                const taskElement = createTaskElement(task);
+                listContainer.appendChild(taskElement);
+            });
+        }
+
+        // Load tasks when page loads
+        document.addEventListener("DOMContentLoaded", async () => {
+            await syncWithServer();
+        });
+    </script>
+</body>
+</html>
